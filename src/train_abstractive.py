@@ -124,6 +124,7 @@ def validate_abs(args, device_id):
         cp_files.sort(key=os.path.getmtime)
         xent_lst = []
         for i, cp in enumerate(cp_files):
+            print(i, cp)
             step = int(cp.split('.')[-2].split('_')[-1])
             if (args.test_start_from != -1 and step < args.test_start_from):
                 xent_lst.append((1e6, cp))
@@ -151,8 +152,11 @@ def validate_abs(args, device_id):
                 if (time_of_cp > timestep):
                     timestep = time_of_cp
                     step = int(cp.split('.')[-2].split('_')[-1])
+                    print('validate', cp, step)
                     validate(args, device_id, cp, step)
+                    print('test', cp, step)
                     test_abs(args, device_id, cp, step)
+                    break
 
             cp_files = sorted(glob.glob(os.path.join(args.model_path, 'model_step_*.pt')))
             cp_files.sort(key=os.path.getmtime)
@@ -222,6 +226,7 @@ def test_abs(args, device_id, pt, step):
     symbols = {'BOS': tokenizer.vocab['[unused0]'], 'EOS': tokenizer.vocab['[unused1]'],
                'PAD': tokenizer.vocab['[PAD]'], 'EOQ': tokenizer.vocab['[unused2]']}
     predictor = build_predictor(args, tokenizer, symbols, model, logger)
+    print('Start translating')
     predictor.translate(test_iter, step)
 
 

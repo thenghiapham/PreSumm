@@ -139,7 +139,8 @@ class Dataloader(object):
     def __iter__(self):
         dataset_iter = (d for d in self.datasets)
         while self.cur_iter is not None:
-            for batch in self.cur_iter:
+            for i, batch in enumerate(self.cur_iter):
+                print('batch: ', i)
                 yield batch
             self.cur_iter = self._next_dataset_iterator(dataset_iter)
 

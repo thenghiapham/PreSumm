@@ -106,7 +106,45 @@ def load_xml(p):
     else:
         return None, None
 
+def _tokenize_wcep_dirs(raw_path, save_path):    
+    stories_dir = os.path.abspath(raw_path)
+    tokenized_stories_dir = os.path.abspath(save_path)
 
+    print("Preparing to tokenize %s to %s..." % (stories_dir, tokenized_stories_dir))
+    stories = os.listdir(stories_dir)
+    # make IO list file
+    print("Making list of files to tokenize...")
+    with open("mapping_for_corenlp.txt", "w") as f:
+        for s in stories:
+            if (not s.endswith('story')):
+                continue
+            f.write("%s\n" % (os.path.join(stories_dir, s)))
+    command = ['java', 'edu.stanford.nlp.pipeline.StanfordCoreNLP', '-annotators', 'tokenize,ssplit',
+               '-ssplit.newlineIsSentenceBreak', 'always', '-filelist', 'mapping_for_corenlp.txt', '-outputFormat',
+               'json', '-outputDirectory', tokenized_stories_dir]
+    print("Tokenizing %i files in %s and saving in %s..." % (len(stories), stories_dir, tokenized_stories_dir))
+    subprocess.call(command)
+    print("Stanford CoreNLP Tokenizer has finished.")
+    os.remove("mapping_for_corenlp.txt")
+
+    # Check that the tokenized stories directory contains the same number of files as the original directory
+    num_orig = len(os.listdir(stories_dir))
+    num_tokenized = len(os.listdir(tokenized_stories_dir))
+    if num_orig != num_tokenized:
+        raise Exception(
+            "The tokenized stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (
+                tokenized_stories_dir, num_tokenized, stories_dir, num_orig))
+    print("Successfully finished tokenizing %s to %s.\n" % (stories_dir, tokenized_stories_dir))
+
+def tokenize_wcep(args):
+    parent_input_dir = args.raw_path
+    parent_output_dir = args.save_path
+    for sub_dir in os.listdir(parent_input_dir):
+        raw_path = parent_input_dir + '/' + sub_dir
+        save_path = parent_output_dir + '/' + sub_dir
+        os.makedirs(save_path)
+        _tokenize_wcep_dirs(raw_path, save_path)
+        
 def tokenize(args):
     stories_dir = os.path.abspath(args.raw_path)
     tokenized_stories_dir = os.path.abspath(args.save_path)
@@ -327,6 +365,41 @@ def _format_to_bert(params):
     datasets = []
     gc.collect()
 
+def wcep_to_lines(args):
+    corpus_mapping = {}
+    corpora = {}
+    for corpus_type in ['valid', 'test', 'train']:
+        files = [f for f in glob.glob(pjoin(args.raw_path, corpus_type, '*.json'))]
+        corpora[corpus_type] = files
+    
+    for corpus_type in ['train', 'valid', 'test']:
+        a_lst = [(f, args) for f in corpora[corpus_type]]
+        pool = Pool(args.n_cpus)
+        dataset = []
+        p_ct = 0
+        for d in pool.imap_unordered(_format_to_lines, a_lst):
+            dataset.append(d)
+            if (len(dataset) > args.shard_size):
+                pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+                with open(pt_file, 'w') as save:
+                    # save.write('\n'.join(dataset))
+                    save.write(json.dumps(dataset))
+                    p_ct += 1
+                    dataset = []
+
+        pool.close()
+        pool.join()
+        print('closing pool')
+        if (len(dataset) > 0):
+            print('Write left over')
+            pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+            print(pt_file)
+            with open(pt_file, 'w') as save:
+                print(dataset[0])
+                # save.write('\n'.join(dataset))
+                save.write(json.dumps(dataset))
+                p_ct += 1
+                dataset = []
 
 def format_to_lines(args):
     corpus_mapping = {}
@@ -367,7 +440,9 @@ def format_to_lines(args):
         pool.join()
         if (len(dataset) > 0):
             pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
+            print(pt_file)
             with open(pt_file, 'w') as save:
+                print(dataset[0])
                 # save.write('\n'.join(dataset))
                 save.write(json.dumps(dataset))
                 p_ct += 1
@@ -376,7 +451,7 @@ def format_to_lines(args):
 
 def _format_to_lines(params):
     f, args = params
-    print(f)
+    #print(f)
     source, tgt = load_json(f, args.lower)
     return {'src': source, 'tgt': tgt}
 

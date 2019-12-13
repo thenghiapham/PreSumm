@@ -216,6 +216,48 @@ class Translator(object):
                 batch,
                 self.max_length,
                 min_length=self.min_length)
+            
+    def _compute_probability(self, batch):
+        '''
+            encode the sequence
+            
+        '''
+        src = batch.src
+        segs = batch.segs
+        mask_src = batch.mask_src
+
+        src_features = self.model.bert(src, segs, mask_src)
+        dec_states = self.model.decoder.init_decoder_state(src, src_features, with_cache=True)
+        device = src_features.device
+        # Tile states and memory beam_size times.
+        dec_states.map_batch_fn(
+            lambda state, dim: tile(state, beam_size, dim=dim))
+        src_features = tile(src_features, beam_size, dim=0)
+        batch_offset = torch.arange(
+            batch_size, dtype=torch.long, device=device)
+        
+        length = something # TODO: length of the candidate title
+        for step in range(length):
+            decoder_input = alive_seq[:, -1].view(1, -1)
+
+            # Decoder forward.
+            decoder_input = decoder_input.transpose(0,1)
+
+            dec_out, dec_states = self.model.decoder(decoder_input, src_features, dec_states,
+                                                     step=step)
+
+            # Generator forward.
+            log_probs = self.generator.forward(dec_out.transpose(0,1).squeeze(0))
+            vocab_size = log_probs.size(-1)
+
+            if step < min_length:
+                log_probs[:, self.end_token] = -1e20
+
+            # Multiply probs by the beam probability.
+            log_probs += topk_log_probs.view(-1).unsqueeze(1)
+
+            alpha = self.global_scorer.alpha
+
 
     def _fast_translate_batch(self,
                               batch,

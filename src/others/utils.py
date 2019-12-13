@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import time
+import rouge
 
 from others import pyrouge
 
@@ -57,7 +58,10 @@ def test_rouge(temp_dir, cand, ref):
     print(len(candidates))
     print(len(references))
     assert len(candidates) == len(references)
-
+    
+    #scores = rouge.Rouge().get_scores(candidates, references, avg=True)
+    #return scores
+    
     cnt = len(candidates)
     current_time = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
     tmp_dir = os.path.join(temp_dir, "rouge-tmp-{}".format(current_time))
@@ -89,7 +93,7 @@ def test_rouge(temp_dir, cand, ref):
         if os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir)
     return results_dict
-
+    
 
 def tile(x, count, dim=0):
     """
